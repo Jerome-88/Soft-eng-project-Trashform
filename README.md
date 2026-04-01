@@ -1,5 +1,5 @@
 # Trashform
-![Logo Waste Analysis App](assets/logo.png)
+![Logo Waste Analysis App](public/assets/logo.png)
 
 Aplikasi analisis sampah menggunakan AI untuk mengidentifikasi jenis sampah dan memberikan rekomendasi daur ulang/upcycling dengan 
 
