@@ -1,9 +1,8 @@
 <div align="center">
 
 <img src="public/assets/logo.png" alt="Trashform Logo" width="80"/>
-## Trashform
 
-
+# Trashform
 Aplikasi analisis sampah menggunakan AI untuk mengidentifikasi jenis sampah dan memberikan rekomendasi daur ulang/upcycling dengan 
 
 ## 🚀 Fitur
