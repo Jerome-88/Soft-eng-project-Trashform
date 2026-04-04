@@ -6,9 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
-from typing import Literal
+from typing import Literal,Dict,Any,List,Optional
 import os
 from dotenv import load_dotenv
+from tavily import TavilyClient
+import asyncio
+
 
 load_dotenv()
 
@@ -24,13 +27,13 @@ app.add_middleware(
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    google_api_key="Masukan API key disini yeaa",
+    google_api_key=os.getenv("GEMINI_API")
 )
 
 
 class Warning(BaseModel):
     icon: Literal["flame", "drop", "warning"]  = Field(description="Tipe ikon peringatan")
-    text: str                                   = Field(description="Teks peringatan penanganan")
+    text: str                                  = Field(description="Teks peringatan penanganan")
 
 class EnvImpact(BaseModel):
     co2_saved:   str  = Field(description="Estimasi CO2 yang bisa dicegah, contoh: '0.18 kg'")
@@ -45,12 +48,20 @@ class UpcyclingIdea(BaseModel):
     steps:      str                             = Field(description="Langkah singkat cara pembuatan (1-2 kalimat)")
     rating:     float                           = Field(description="Rating estimasi dari 1.0 hingga 5.0")
 
-class YoutubeRef(BaseModel):
-    title:    str = Field(description="Judul video atau query pencarian YouTube")
-    channel:  str = Field(description="Nama channel atau 'YouTube Search'")
-    duration: str = Field(description="Estimasi durasi, contoh: '8:24' atau '~10 mnt'")
-    query:    str = Field(description="Query untuk pencarian di YouTube, contoh: 'DIY pot dari botol plastik'")
+class VideoItem(BaseModel):
+    title: str = Field(description="Judul video YouTube")
+    url: str = Field(description="URL video YouTube")
 
+class YoutubeRef(BaseModel):
+    # title:    str = Field(description="Judul video atau query pencarian YouTube")
+    # channel:  str = Field(description="Nama channel atau 'YouTube Search'")
+    # duration: str = Field(description="Estimasi durasi, contoh: '8:24' atau '~10 mnt'")
+    query:    list[str] = Field(description="Query untuk mencari tutorial DIY dari bahan di YouTube, contoh: 'DIY pot dari botol plastik'")
+    related_videos: Optional[List[VideoItem]] = Field(
+            default=None,
+            description="List video hasil pencarian (diisi oleh backend, jangan diisi oleh LLM)"
+        )
+    
 class BankSampah(BaseModel):
     can_sell:       bool = Field(description="Apakah material ini bisa dijual ke bank sampah")
     estimate_price: str  = Field(description="Estimasi harga jual per kg, contoh: 'Rp 500 – 1.500 / kg'")
@@ -59,14 +70,14 @@ class TrashAnalysisResult(BaseModel):
     name:            str                                    = Field(description="Nama spesifik sampah yang terdeteksi")
     emoji:           str                                    = Field(description="Satu emoji yang merepresentasikan sampah")
     confidence:      int                                    = Field(description="Confidence score deteksi AI, 0-100")
-    trash_type:      Literal["Organik", "Anorganik", "B3"] = Field(description="Jenis sampah")
+    trash_type:      Literal["Organik", "Anorganik", "B3"]  = Field(description="Jenis sampah")
     recyclable_code: str                                    = Field(description="Kode daur ulang jika ada, contoh: '#1 PET', '#2 HDPE', atau 'N/A'")
     short_desc:      str                                    = Field(description="Deskripsi singkat 1 kalimat tentang material")
     full_desc:       str                                    = Field(description="Deskripsi lengkap 2-3 kalimat tentang material, cara daur ulang, dan nilai ekonominya")
     warnings:        list[Warning]                          = Field(description="Daftar peringatan cara penanganan yang benar")
     env_impact:      EnvImpact                              = Field(description="Dampak lingkungan dari sampah ini")
     ideas:           list[UpcyclingIdea]                    = Field(description="3 hingga 5 ide kreatif upcycling atau daur ulang")
-    youtube_refs:    list[YoutubeRef]                       = Field(description="2 referensi tutorial YouTube yang relevan")
+    youtube_refs:    YoutubeRef                             = Field(description="referensi tutorial YouTube yang relevan")
     bank_sampah:     BankSampah                             = Field(description="Info jual ke bank sampah")
 
 # respons si API nya
@@ -75,6 +86,9 @@ class AnalyzeResponse(BaseModel):
     success: bool
     data:    TrashAnalysisResult | None = None
     error:   str | None                 = None
+
+
+
 
 # Prompt langchain nya
 
@@ -105,10 +119,38 @@ FORMAT JSON yang harus dikembalikan:
   "warnings": [{"icon": "flame|drop|warning", "text": "..."}],
   "env_impact": {"co2_saved": "...", "decompose": "...", "recyclable": true},
   "ideas": [{"emoji": "...", "title": "...", "difficulty": "Mudah|Sedang|Sulit", "time": "...", "steps": "...", "rating": 4.5}],
-  "youtube_refs": [{"title": "...", "channel": "...", "duration": "...", "query": "..."}],
+  "youtube_refs": {"query": ["..."], "related_videos": [{"title":"...","url":"..."}]},
   "bank_sampah": {"can_sell": true, "estimate_price": "..."}
 }
 """
+
+
+# function untuk mengambil data dari youtube untuk dijadiin tutorial
+async def get_videos(queries: List[str]) -> Dict[str, Any]:
+    client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+
+    async def search_one(query: str):
+        result = await asyncio.to_thread(
+            client.search,
+            query=f"tutorial {query}",
+            search_depth="advanced",
+            include_domains=["youtube.com"],
+            max_results=3
+        )
+        return result.get("results", [])
+
+    tasks = [search_one(q) for q in queries]
+    
+    try:
+        query_results = await asyncio.gather(*tasks)
+    except Exception as e:
+        pass
+    all_results = [item for sublist in query_results for item in sublist]
+
+    return {
+        "results": all_results,
+        "count": len(all_results)
+    }
 
 # ni buat kita encode gambar ama ambil JSON dari respon AI
 
@@ -156,6 +198,15 @@ async def analyze_trash(image_bytes: bytes, mime_type: str = "image/jpeg") -> Tr
 
     response = await llm.ainvoke([message])
     raw_json = extract_json(response.content)
+    query_list= raw_json["youtube_refs"]["query"]
+    try:
+        video_data = await get_videos(queries=query_list)
+        url_list = [{"title": item["title"],"url": item["url"]} for item in video_data["results"]]
+        raw_json["youtube_refs"]["related_videos"] = url_list
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch videos") from e
+    
     return TrashAnalysisResult(**raw_json)
 
 # ni endpoint API nya
@@ -186,6 +237,7 @@ async def analyze_endpoint(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=f"Gagal memproses response AI: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Terjadi kesalahan: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
