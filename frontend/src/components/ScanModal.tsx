@@ -8,7 +8,7 @@ interface ScanModalProps {
   onAnalyzeSuccess: (result: TrashAnalysisResult, imageUrl: string) => void;
 }
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL ?? 'https://soft-eng-project-trashform.vercel.app';
 
 export default function ScanModal({ isOpen, onClose, onAnalyzeSuccess }: ScanModalProps) {
   const [dragOver, setDragOver] = useState(false);

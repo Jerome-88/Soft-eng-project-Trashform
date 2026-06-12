@@ -14,6 +14,8 @@ import { UserStatsProvider, useUserStats } from './context/UserStatsContext';
 import { getWeeklyImpact } from './lib/achievements';
 import LoginPage from './components/LoginPage';
 import { FollowProvider } from './context/FollowContext';
+import { Leaf } from 'lucide-react';
+
 
 // ─── Types (mirror dari Pydantic backend) ─────────────────────────────────────
 export type TrashType   = 'Organik' | 'Anorganik' | 'B3';
@@ -77,7 +79,7 @@ export interface AnalyzeResponse {
 // ─── Desktop Layout Home Page ─────────────────────────────────────────────────
 
 function AppContent() {
-  const { isLoggedIn, isOwnPost } = useProfile();
+  const { isLoggedIn, isOwnPost,isAuthLoading } = useProfile();
   const [scanOpen, setScanOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<PageId>('home');
   const [profileUserId, setProfileUserId] = useState<string>('me');
@@ -101,6 +103,21 @@ function AppContent() {
   };
 
   const openOwnProfile = () => openProfile('me');
+
+
+  // added part
+  if (isAuthLoading) {
+    return (
+      <div className="h-screen bg-[#edf5ee] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#2fd57f] flex items-center justify-center shadow-md shadow-[#8bd9b0]/40 animate-pulse">
+            <Leaf size={28} className="text-[#113b2a]" />
+          </div>
+          <p className="text-[13px] text-[#60766a]">Memuat...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return <LoginPage />;

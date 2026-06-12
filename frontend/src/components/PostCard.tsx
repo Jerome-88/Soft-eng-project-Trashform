@@ -20,7 +20,7 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post, onViewProfile }: PostCardProps) {
-  const { likePost, deletePost, addComment } = usePosts();
+  const { likePost, deletePost, addComment, savePost } = usePosts();
   const { isOwnPost } = useProfile();
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -157,14 +157,22 @@ export default function PostCard({ post, onViewProfile }: PostCardProps) {
             <MessageCircle size={14} />
             Komentar
           </button>
-          <button className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg font-semibold text-[12px] text-[#2f4a3d] hover:bg-[#eef4ef] transition-colors">
-            <Bookmark size={14} />
-            Simpan
+          <button
+              onClick={() => savePost(post.id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg font-semibold text-[12px] transition-colors ${
+                post.saved
+                  ? 'text-[#1b5c43] bg-[#eef4ef]'
+                  : 'text-[#2f4a3d] hover:bg-[#eef4ef]'
+              }`}
+            >
+              <Bookmark size={14} fill={post.saved ? 'currentColor' : 'none'} />
+              {post.saved ? 'Tersimpan' : 'Simpan'}
           </button>
         </div>
 
         {showComments && (
           <CommentSection
+            postId={post.id} 
             comments={post.commentList}
             onAddComment={(text) => addComment(post.id, text)}
           />

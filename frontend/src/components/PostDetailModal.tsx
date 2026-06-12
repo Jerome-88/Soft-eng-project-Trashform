@@ -13,17 +13,36 @@ interface PostDetailModalProps {
   onViewProfile?: (userId: string) => void;
 }
 
+const API_BASE = import.meta.env.VITE_API_URL ?? 'https://soft-eng-project-trashform.vercel.app';
+
+
 export default function PostDetailModal({ post, isOpen, onClose, onViewProfile }: PostDetailModalProps) {
   const { deletePost, addComment } = usePosts();
   const { isOwnPost } = useProfile();
+  const [showMenu, setShowMenu] = useState(false);
   const [showComments, setShowComments] = useState(true);
+  const { authFetch } = useProfile();
 
   if (!isOpen) return null;
 
-  const handleDelete = () => {
-    if (window.confirm('Yakin ingin menghapus postingan ini?')) {
-      deletePost(post.id);
-      onClose();
+  const handleDelete = async () => {
+    if (!window.confirm('Yakin ingin menghapus postingan ini??')) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      console.log(API_BASE)
+      const res = await authFetch(`${API_BASE}/post/${post.id}/delete`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}`},
+      });
+
+      if (!res.ok) throw new Error('Gagal menghapus post');
+
+      deletePost(post.id); 
+      setShowMenu(false);
+    } catch (err) {
+      console.error(err);
+      alert('Gagal menghapus postingan');
     }
   };
 
@@ -116,8 +135,9 @@ export default function PostDetailModal({ post, isOpen, onClose, onViewProfile }
             </button>
             {showComments && (
               <CommentSection
-                comments={post.commentList}
-                onAddComment={(text) => addComment(post.id, text)}
+                  postId={String(post.id)}
+                  comments={post.commentList}
+                  onAddComment={(text) => addComment(post.id, text)}
               />
             )}
           </div>

@@ -68,7 +68,7 @@ export interface AnalyzeResponse {
 }
 
 // Anu anuan API
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL ?? 'https://soft-eng-project-trashform.vercel.app';
 
 async function analyzeTrash(file: File): Promise<TrashAnalysisResult> {
   const formData = new FormData();

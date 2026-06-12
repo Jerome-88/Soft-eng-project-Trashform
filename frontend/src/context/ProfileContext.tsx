@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js'
 
 export const CURRENT_USER_ID = 'me';
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+)
+
 
 export interface UserProfile {
   name: string;
@@ -10,6 +17,9 @@ export interface UserProfile {
   avatar: string | null;
   av: string;
 }
+
+const API_BASE = import.meta.env.VITE_API_URL ?? 'https://soft-eng-project-trashform.vercel.app';
+
 
 export const DEFAULT_PROFILE: UserProfile = {
   name: 'EEVEE',
@@ -61,36 +71,92 @@ interface ProfileContextType {
   profile: UserProfile;
   isLoggedIn: boolean;
   sessionKey: number;
+  isAuthLoading: boolean  // tambah ini
   updateProfile: (updates: ProfileUpdate) => void;
   logout: () => void;
-  login: () => void;
+  login: (email: string, password: string) => Promise<any> 
+  register: (email: string, password: string, username: string) => Promise<void>; // ← tambah
   isOwnPost: (author: string, authorId?: string) => boolean;
   isOwnComment: (author: string, authorId?: string) => boolean;
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
+
+
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('isLoggedIn') !== 'false');
+  // const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('isLoggedIn') !== 'false');
   const [sessionKey, setSessionKey] = useState(0);
-  const [profile, setProfile] = useState<UserProfile>(() => {
-    try {
-      const saved = localStorage.getItem('userProfile');
-      if (saved) return buildProfile(JSON.parse(saved));
-    } catch (error) {
-      console.error('Error loading profile:', error);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true); // ← default true
+
+  
+  const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+
+  const authFetch = useCallback(async (url: string, options?: RequestInit) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...options?.headers,
+      },
+    });
+
+    if (res.status === 401) {
+      // Token expired → auto logout
+      localStorage.removeItem('token');
+      setIsLoggedIn(false);
+      setSessionKey((k) => k + 1);
+      throw new Error('Session expired');
     }
-    return DEFAULT_PROFILE;
-  });
+
+    return res;
+  }, []);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
-    try {
-      localStorage.setItem('userProfile', JSON.stringify(profile));
-    } catch (error) {
-      console.error('Error saving profile:', error);
-    }
-  }, [profile, isLoggedIn]);
+    const checkAuth = async () => {
+      try {
+        const token = localStorage.getItem('token');
+      if (!token) {
+        setIsLoggedIn(false);
+        return;
+      }
+
+      //Fetch profile sekalian validasi token
+      const res = await authFetch(`${API_BASE}/profile/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        localStorage.removeItem('token');
+        setIsLoggedIn(false);
+        return;
+      }
+
+      const p = await res.json();
+
+      //Set profile dari API
+      setProfile({
+        name: p.name,
+        username: p.username,
+        location: '',
+        bio: p.bio ?? '',
+        avatar: p.avatar ?? null,
+        av: p.av,
+      });
+        setIsLoggedIn(true);
+      } catch {
+        localStorage.removeItem('token'); 
+        setIsLoggedIn(false);
+      } finally {
+        setIsAuthLoading(false); 
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   const isOwnPost = useCallback(
     (author: string, authorId?: string) =>
@@ -127,14 +193,62 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setSessionKey((k) => k + 1);
   };
 
-  const login = () => {
-    localStorage.setItem('isLoggedIn', 'true');
-    setIsLoggedIn(true);
-  };
+//   const login = async (email: string, password: string) => {
+//   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+//   if (error) throw error
+//   localStorage.setItem('isLoggedIn', 'true');
+//   localStorage.setItem('token', data.session.access_token);
+//   setIsLoggedIn(true);
+//   return data
+// }
+const login = async (email: string, password: string) => {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+
+  localStorage.setItem('token', data.session.access_token);
+
+  // ✅ Fetch profile dari API setelah login
+  try {
+    const res = await fetch(`${API_BASE}/profile/me`, {
+      headers: { Authorization: `Bearer ${data.session.access_token}` },
+    });
+    if (res.ok) {
+      const p = await res.json();
+      setProfile({
+        name: p.name,
+        username: p.username,
+        location: '',
+        bio: p.bio ?? '',
+        avatar: p.avatar ?? null,
+        av: p.av,
+      });
+    }
+  } catch (err) {
+    console.error('Failed to fetch profile after login', err);
+  }
+
+  setIsLoggedIn(true);
+  return data;
+};
+
+const register = async (email: string, password: string, username: string) => {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        username, 
+      },
+    },
+  });
+
+  if (error) throw new Error(error.message);
+  // Trigger DB otomatis insert ke tabel profile
+};
 
   return (
     <ProfileContext.Provider
-      value={{ profile, isLoggedIn, sessionKey, updateProfile, logout, login, isOwnPost, isOwnComment }}
+      value={{ profile, isLoggedIn, sessionKey, isAuthLoading,updateProfile, logout, login,register, isOwnPost, isOwnComment,authFetch }}
     >
       {children}
     </ProfileContext.Provider>
@@ -146,3 +260,5 @@ export function useProfile() {
   if (!context) throw new Error('useProfile must be used within ProfileProvider');
   return context;
 }
+
+

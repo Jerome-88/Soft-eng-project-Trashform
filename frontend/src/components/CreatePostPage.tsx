@@ -5,6 +5,7 @@ import { useProfile, CURRENT_USER_ID } from '../context/ProfileContext';
 import type { TrashType } from '../App';
 
 const CATEGORY_OPTIONS = ['Plastik', 'Kardus', 'Kaca', 'Kayu', 'Logam', 'Lainnya'];
+const API_BASE = import.meta.env.VITE_API_URL ?? 'https://soft-eng-project-trashform.vercel.app';
 
 // Utility function untuk convert File ke base64
 const fileToBase64 = (file: File): Promise<string> => {
@@ -20,9 +21,11 @@ interface CreatePostPageProps {
   onBackToFeed?: () => void;
 }
 
+
+
 export default function CreatePostPage({ onBackToFeed }: CreatePostPageProps) {
-  const { addPost } = usePosts();
-  const { profile } = useProfile();
+  // const { addPost } = usePosts();
+  // const { profile } = useProfile();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Plastik');
   const [description, setDescription] = useState('');
@@ -30,10 +33,13 @@ export default function CreatePostPage({ onBackToFeed }: CreatePostPageProps) {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isDraftLoading, setIsDraftLoading] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+  const { authFetch } = useProfile();
+
 
   const imagePreview = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : null), [imageFile]);
 
   useEffect(() => {
+
     return () => {
       if (imagePreview) URL.revokeObjectURL(imagePreview);
     };
@@ -68,24 +74,83 @@ export default function CreatePostPage({ onBackToFeed }: CreatePostPageProps) {
         console.error('Error converting image:', error);
       }
     }
+  
+    // handle post upload
     
-    // Add post to context
-    const newPost = {
-      author: profile.name,
-      av: profile.av,
-      authorId: CURRENT_USER_ID,
-      time: 'Sekarang',
-      type: (category.toLowerCase() === 'plastik' || category.toLowerCase() === 'kardus' ? 'Anorganik' : 'Anorganik') as TrashType,
-      title: title || 'Untitled Post',
-      content: description || 'No description',
-      img: imageData,
-      likes: 0,
-      commentList: [],
-      shares: 0,
-      liked: false,
-    };
+   
+    if (!imageFile) {
+        alert("Pilih gambar dulu")
+        return
+      }
+    try {
+
+      setIsPosting(true)
+
+      const token = localStorage.getItem("token")
+
+      const formData = new FormData()
+
+      formData.append("file", imageFile)
+
+      formData.append("title", title)
+
+      formData.append("caption", description)
+
+      formData.append("youtube_url", youtubeLink)
+
+      formData.append("category", category)
+
+      formData.append("for_sale", "false")
+
+      const response = await authFetch(
+          `${API_BASE}/upload-post`,
+          {
+            method: "POST",
+
+            headers: {
+              Authorization: `Bearer ${token}`
+            },
+
+            body: formData
+          }
+        )
+
+      if (!response.ok) {
+
+        const error = await response.json()
+
+        throw new Error(error.detail)
+      }
+
+      const data = await response.json()
+
+      console.log(data)
+
+      alert("Post berhasil dibuat")
+
+      // reset form
+      setTitle('')
+      setDescription('')
+      setCategory('Plastik')
+      setYoutubeLink('')
+      setImageFile(null)
+
+      onBackToFeed?.()
+
+    } catch (err) {
+
+    console.error(err)
+
+    alert("Gagal upload post")
+
+    } finally {
+
+        setIsPosting(false)
+    }
     
-    addPost(newPost);
+
+    // 
+
     
     // Reset form
     setTitle('');
